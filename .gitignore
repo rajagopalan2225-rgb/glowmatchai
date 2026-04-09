@@ -1,0 +1,33 @@
+# Environments
+.env
+backend/.env
+frontend/.env
+frontend/.env.local
+frontend/.env.example
+
+# Custom Generated Assets
+frontend/public/images/modes/*.png
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+venv/
+env/
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Cache and logs
+.DS_Store
+.eslintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Database (local only)
+*.sqlite3
+glowmatchai
