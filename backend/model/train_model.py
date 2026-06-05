@@ -7,7 +7,7 @@ from tensorflow.keras.preprocessing.image import ImageDataGenerator
 def train():
     os.makedirs("backend/model", exist_ok=True)
     
-    # Needs training_data/{Fair, Medium, Dark} folders
+    # Needs training_data/ folders
     data_dir = "training_data"
     img_size = (128, 128)
     batch_size = 32
@@ -18,9 +18,7 @@ def train():
 
     datagen = ImageDataGenerator(
         rescale=1./255,
-        rotation_range=20,
-        zoom_range=0.2,
-        horizontal_flip=True,
+        rotation_range=10,
         validation_split=0.2
     )
 
@@ -40,37 +38,47 @@ def train():
         subset='validation'
     )
 
-    # CNN architecture
+    # Automatically set output neurons based on classes found (Fair, Medium, Dusky, Dark)
+    num_classes = len(train_gen.class_indices)
+
+    # ── MobileNetV2 Transfer Learning Architecture ── #
+    # This prepares the model for real-world face resilience
+    base_model = tf.keras.applications.MobileNetV2(
+        input_shape=(128, 128, 3),
+        include_top=False,
+        weights='imagenet'
+    )
+    base_model.trainable = False  # Freeze base layers first
+
     model = models.Sequential([
-        layers.Conv2D(32, (3, 3), activation='relu', input_shape=(128, 128, 3)),
-        layers.MaxPooling2D((2, 2)),
-        layers.Conv2D(64, (3, 3), activation='relu'),
-        layers.MaxPooling2D((2, 2)),
-        layers.Conv2D(128, (3, 3), activation='relu'),
-        layers.MaxPooling2D((2, 2)),
-        layers.Flatten(),
-        layers.Dense(256, activation='relu'),
-        layers.Dropout(0.5),
-        layers.Dense(3, activation='softmax')
+        # MobileNetV2 requires inputs in [-1, 1], but our ImageDataGenerator already scales to [0, 1].
+        # We will adjust preprocessing in production predicting route.
+        base_model,
+        layers.GlobalAveragePooling2D(),
+        layers.Dense(128, activation='relu'),
+        layers.Dropout(0.4),
+        layers.Dense(num_classes, activation='softmax')
     ])
 
-    model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+    model.compile(
+        optimizer=tf.keras.optimizers.Adam(learning_rate=0.001), 
+        loss='categorical_crossentropy', 
+        metrics=['accuracy']
+    )
 
     # Train
-    print("Starting training...")
-    history = model.fit(train_gen, validation_data=val_gen, epochs=25)
+    print("Starting Transfer Learning on MobileNetV2...")
+    history = model.fit(train_gen, validation_data=val_gen, epochs=5)
 
     # Save
-    model.save("backend/model/skin_tone_model.h5")
+    model.save("model/skin_tone_model.h5")
     
     # Save class index mapping
     indices = {v: k for k, v in train_gen.class_indices.items()}
-    with open("backend/model/class_indices.json", 'w') as f:
+    with open("model/class_indices.json", 'w') as f:
         json.dump(indices, f)
         
-    print(f"Final training accuracy: {history.history['accuracy'][-1]:.4f}")
     print(f"Final validation accuracy: {history.history['val_accuracy'][-1]:.4f}")
 
 if __name__ == "__main__":
-    # train()
-    pass
+    train()

@@ -1,0 +1,37 @@
+from sqlalchemy import create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://rajagopalan@localhost:5432/glowmatchai")
+
+Base = declarative_base()
+
+# Try to connect; if it fails the app still starts without DB
+try:
+    engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args={}, pool_pre_ping=True)
+    # Test the connection eagerly so we know right away
+    with engine.connect() as _conn:
+        pass
+    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+    DB_AVAILABLE = True
+    print("INFO: Database connected successfully.")
+except Exception as e:
+    engine = None
+    SessionLocal = None
+    DB_AVAILABLE = False
+    print(f"WARNING: Database unavailable — running without DB. ({e})")
+
+
+def get_db():
+    if not DB_AVAILABLE or SessionLocal is None:
+        yield None
+        return
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()

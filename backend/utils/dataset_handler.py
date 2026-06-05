@@ -1,48 +1,79 @@
-import pandas as pd
+"""
+dataset_handler.py — NO-DATABASE MODE
+Uses the pandas DataFrame (loaded from CSV at startup) instead of PostgreSQL.
+"""
+import hashlib
+import random
 
-# Map detected skin tone label to dataset skin_tone values
-TONE_ALIASES = {
-    "fair":   ["fair", "light", "pale", "fair-light"],
-    "medium": ["medium", "wheatish", "beige", "tan", "olive"],
-    "dusky":  ["dusky", "wheatish", "medium", "tan", "dark medium", "caramel", "brown"],
-    "dark":   ["dark", "deep", "ebony", "rich"],
+# ── Tone normalisation ────────────────────────────────────────────────────────
+TONE_MAP = {
+    "fair":      ["Fair"],
+    "medium":    ["Medium"],
+    "dusky":     ["Dusky"],
+    "dark":      ["Dark"],
+    "light":     ["Fair"],
+    "pale":      ["Fair"],
+    "wheatish":  ["Medium", "Dusky"],
+    "tan":       ["Dusky"],
+    "olive":     ["Medium", "Dusky"],
+    "brown":     ["Dusky", "Dark"],
+    "caramel":   ["Dusky", "Dark"],
+    "deep":      ["Dark"],
+    "ebony":     ["Dark"],
 }
 
-def normalize_tone(tone: str) -> list[str]:
-    """Return list of possible matching terms for a given skin tone label."""
+def normalize_tone(tone: str) -> list:
     key = tone.strip().lower()
-    return TONE_ALIASES.get(key, [key])
+    return TONE_MAP.get(key, [tone.capitalize()])
 
 
-def get_recommendations(df, skin_tone: str, mode: str) -> list[dict]:
-    """Filter products by skin tone and mode with alias resolution."""
+def _filter_df(df, skin_tone: str, mode: str = None):
+    """Filter the dataframe by skin tone and optionally mode."""
     if df is None:
         return []
-
-    mode_str = str(mode).strip().lower()
-    aliases = normalize_tone(skin_tone)
-
-    # Build a combined mask: row matches any of the tone aliases
-    tone_mask = pd.Series([False] * len(df), index=df.index)
-    for alias in aliases:
-        tone_mask |= df['skin_tone'].str.lower().str.contains(alias, na=False)
-
-    filtered = df[tone_mask]
-
-    # Apply mode filter if column exists
-    if 'mode' in filtered.columns and mode_str:
-        filtered = filtered[filtered['mode'].str.lower().str.contains(mode_str, na=False)]
-
-    # If nothing found, relax to just the primary label
-    if filtered.empty:
-        primary = aliases[0]
-        filtered = df[df['skin_tone'].str.lower().str.contains(primary, na=False)]
-
-    return filtered.head(12).to_dict(orient="records")
+    tones = normalize_tone(skin_tone)
+    # Case-insensitive tone filter
+    mask = df["skin_tone"].str.strip().str.lower().isin([t.lower() for t in tones])
+    filtered = df[mask]
+    if mode and not filtered.empty:
+        mode_mask = filtered["mode"].str.strip().str.lower() == mode.strip().lower()
+        mode_filtered = filtered[mode_mask]
+        if not mode_filtered.empty:
+            filtered = mode_filtered
+    return filtered.to_dict(orient="records") if not filtered.empty else []
 
 
-def get_all_modes(df) -> list[str]:
-    """Fetch unique modes from dataset."""
-    if df is not None and 'mode' in df.columns:
-        return sorted(df['mode'].dropna().unique().tolist())
-    return ["Daily", "Party", "Office", "Bridal", "Natural"]
+def get_recommendations(df, skin_tone: str, mode: str, seed: str = "default") -> list:
+    """Return up to 12 varied product recommendations from the CSV dataframe."""
+    rows = _filter_df(df, skin_tone, mode)
+    if not rows:
+        rows = _filter_df(df, skin_tone)
+    if not rows:
+        return []
+    h = int(hashlib.md5(seed.encode()).hexdigest(), 16)
+    random.seed(h)
+    shuffled = rows[:]
+    random.shuffle(shuffled)
+    return shuffled[:12]
+
+
+def get_best_match_row(df, skin_tone: str, mode: str, seed: str = "default"):
+    """Return the single best matching row from the CSV dataframe."""
+    rows = _filter_df(df, skin_tone, mode)
+    if not rows:
+        rows = _filter_df(df, skin_tone)
+    if not rows:
+        return None
+    h = int(hashlib.md5(seed.encode()).hexdigest(), 16)
+    return rows[h % len(rows)]
+
+
+def get_all_modes(df) -> list:
+    """Return distinct modes available in the dataframe."""
+    if df is None or df.empty:
+        return ["simple", "occasion", "weather"]
+    try:
+        modes = df["mode"].dropna().str.strip().str.lower().unique().tolist()
+        return sorted(modes) if modes else ["simple", "occasion", "weather"]
+    except Exception:
+        return ["simple", "occasion", "weather"]

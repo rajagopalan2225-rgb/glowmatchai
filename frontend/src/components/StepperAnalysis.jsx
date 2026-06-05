@@ -1,6 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Camera, Upload, RefreshCw, CheckCircle2, Wand2, ThermometerSun, AlertCircle, MapPin, Loader2, ArrowRight, ShieldCheck, Clock, DollarSign } from 'lucide-react';
+import { Camera, Upload, RefreshCw, CheckCircle2, Wand2, ThermometerSun, AlertCircle, MapPin, Loader2, ArrowRight, ShieldCheck, Clock } from 'lucide-react';
+import api from '../api';
+import WeatherInput from './WeatherInput';
+import WeatherCard from './WeatherCard';
 
 const MAKEUP_IMAGES = {
   foundation: "https://images.unsplash.com/photo-1599305090598-fe179d501227?w=400&q=80",
@@ -83,13 +86,12 @@ const StepperAnalysis = () => {
   useEffect(() => {
     let isMounted = true;
     const wakeServer = async () => {
-      const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
       const slowStartTimer = setTimeout(() => {
         if (isMounted) setServerState('waking');
       }, 3000); // After 3 seconds, assume cold start
 
       try {
-        await fetch(`${baseUrl}/`);
+        await api.get('/');
         clearTimeout(slowStartTimer);
         if (isMounted) setServerState('online');
       } catch {
@@ -100,61 +102,6 @@ const StepperAnalysis = () => {
     wakeServer();
     return () => { isMounted = false; stopCamera(); };
   }, []);
-
-  // Weather Search
-  useEffect(() => {
-    if (city !== '' || !cityQuery || cityQuery.length < 2) {
-      setCitySuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-    const timer = setTimeout(async () => {
-      try {
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-        const res = await fetch(`${baseUrl}/api/weather/search?q=${encodeURIComponent(cityQuery)}`);
-        const data = await res.json();
-        setCitySuggestions(data);
-        setShowSuggestions(data.length > 0);
-      } catch {
-        setCitySuggestions([]);
-      }
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [cityQuery]);
-
-  useEffect(() => {
-    const handler = (e) => {
-      if (cityInputRef.current && !cityInputRef.current.contains(e.target) &&
-        suggestionsRef.current && !suggestionsRef.current.contains(e.target)) {
-        setShowSuggestions(false);
-      }
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
-
-  const selectCity = (suggestion) => {
-    const label = `${suggestion.name}, ${suggestion.country}`;
-    setCity(`id:${suggestion.id}`);
-    setCityQuery(label);
-    setCitySuggestions([]);
-    setShowSuggestions(false);
-  };
-
-  const handleCurrentLocation = () => {
-    if (!navigator.geolocation) return setError("Geolocation unavailable.");
-    setLocationLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        setCity(`${pos.coords.latitude},${pos.coords.longitude}`);
-        setCityQuery("Current Live Location");
-        setCitySuggestions([]);
-        setShowSuggestions(false);
-        setLocationLoading(false);
-      },
-      () => { setError("Unable to retrieve location."); setLocationLoading(false); }
-    );
-  };
 
   const startCamera = async () => {
     try {
@@ -246,11 +193,12 @@ const StepperAnalysis = () => {
   const callApi = async (formData) => {
     setLoading(true);
     try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/full-analysis`, { method: 'POST', body: formData });
-      if (!res.ok) throw new Error("Analysis failed");
-      return await res.json();
+      const { data } = await api.post('/api/full-analysis', formData);
+      return data;
     } catch (err) {
-      setError(err.message); return null;
+      const msg = err.response?.data?.detail || err.message || "Analysis failed";
+      setError(msg);
+      return null;
     } finally {
       setLoading(false);
     }
@@ -269,16 +217,25 @@ const StepperAnalysis = () => {
   };
 
   const advanceToDetails = async () => {
-    if (!mode || (mode === 'Weather' && !city)) return setError("Required fields missing.");
-    const formData = new FormData();
-    formData.append('image', file);
     // Map display labels back to internal keys for the backend
     const internalMode = mode === 'Simple Makeup' ? 'Simple' : 
                         mode === 'Occasional Makeup' ? 'Occasion' : 
                         mode === 'Weather Makeup' ? 'Weather' : mode;
+
+    if (!internalMode) return setError("Please select a makeup option.");
     
+    // Handle weather mode validation
+    if (internalMode === 'Weather' && !cityQuery) {
+      return setError("Please enter a location for the weather recommendation.");
+    }
+
+    const formData = new FormData();
+    formData.append('image', file);
     formData.append('mode', internalMode);
-    if (city) formData.append('city', city);
+    
+    const cityParam = city || cityQuery;
+    if (cityParam) formData.append('city', cityParam);
+
     const data = await callApi(formData);
     if (data) {
       setAnalysisData(prev => ({ ...prev, ...data }));
@@ -454,38 +411,31 @@ const StepperAnalysis = () => {
                     <div className="absolute bottom-10 left-8 text-left">
                       <h3 className="text-3xl font-playfair tracking-wider text-white mb-2">{m}</h3>
                     </div>
-                    {mode === m && <CheckCircle2 className="absolute top-8 right-8 text-white z-20" size={32} />}
                   </button>
                 ))}
               </div>
 
-              {/* Floating Weather Tool directly inside */}
+              {/* Reusable WeatherInput component for weather options */}
               <AnimatePresence>
                 {mode === 'Weather Makeup' && (
-                  <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="w-full max-w-2xl mt-12 bg-white/10 backdrop-blur-2xl border border-white/30 rounded-[3rem] p-4 relative shadow-2xl">
-                    <div className="relative flex items-center px-6">
-                      <MapPin size={24} className="text-white/60 absolute left-8" />
-                      <input type="text" value={cityQuery} onChange={e => { setCityQuery(e.target.value); setCity(''); }} onFocus={() => citySuggestions.length > 0 && setShowSuggestions(true)} placeholder="Enter live location..." className="w-full py-5 pl-16 pr-12 text-xl font-light tracking-wide outline-none bg-transparent text-white placeholder-white/40" />
-                      {loading || locationLoading ? <Loader2 className="absolute right-8 animate-spin text-white/80" /> : city && <CheckCircle2 className="absolute right-8 text-white/80" />}
-                    </div>
-                    {showSuggestions && (
-                      <ul className="absolute top-full mt-4 left-0 w-full bg-black/80 backdrop-blur-3xl border border-white/10 rounded-[2rem] overflow-hidden z-50">
-                        {citySuggestions.map(s => (
-                          <li key={s.id} onClick={() => selectCity(s)} className="p-5 border-b border-white/5 hover:bg-white/10 cursor-pointer flex items-center gap-4 text-white">
-                            <MapPin size={16} className="text-white/50" />
-                            <span className="font-light tracking-wider">{s.name}, {s.country}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    <button type="button" onClick={handleCurrentLocation} className="mt-4 w-full py-4 bg-white/10 hover:bg-white/20 transition-all rounded-[2rem] font-medium tracking-widest uppercase text-sm">📍 Auto Detect Location</button>
-                  </motion.div>
+                  <WeatherInput
+                    city={city}
+                    setCity={setCity}
+                    cityQuery={cityQuery}
+                    setCityQuery={setCityQuery}
+                    onGetRecommendation={advanceToDetails}
+                    loading={loading}
+                    setError={setError}
+                  />
                 )}
               </AnimatePresence>
 
-              <button type="button" onClick={advanceToDetails} disabled={!mode || (mode === 'Weather Makeup' && !city) || loading} className="mt-16 mb-20 bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-lg border border-white/30 px-16 py-6 rounded-full text-xl font-bold transition-all shadow-[0_0_50px_rgba(255,255,255,0.1)] flex items-center gap-3 disabled:opacity-0">
-                {loading ? <><Loader2 size={24} className="animate-spin" /> <span className="text-sm">{loadingText}</span></> : <>{'Curate Style'} <ArrowRight size={24} /></>}
-              </button>
+              {/* Show main curate style button only for non-weather makeup options */}
+              {mode !== 'Weather Makeup' && (
+                <button type="button" onClick={advanceToDetails} disabled={!mode || loading} className="mt-16 mb-20 bg-white/20 hover:bg-white text-white hover:text-black backdrop-blur-lg border border-white/30 px-16 py-6 rounded-full text-xl font-bold transition-all shadow-[0_0_50px_rgba(255,255,255,0.1)] flex items-center gap-3 disabled:opacity-0">
+                  {loading ? <><Loader2 size={24} className="animate-spin" /> <span className="text-sm">{loadingText}</span></> : <>{'Curate Style'} <ArrowRight size={24} /></>}
+                </button>
+              )}
             </div>
           </motion.section>
         )}
@@ -499,15 +449,9 @@ const StepperAnalysis = () => {
             <div className="absolute inset-0 bg-black/70 backdrop-blur-lg" />
             <div className="relative z-20 w-full h-full overflow-y-auto px-6 py-20 pb-40">
 
-              {/* Weather Ribbon (if weather mode) */}
+              {/* Reusable WeatherCard displaying live weather parameters */}
               {analysisData?.weather && (
-                <div className="mb-16 w-full max-w-4xl mx-auto bg-white/5 backdrop-blur-3xl border border-white/20 p-8 rounded-[3rem] flex flex-col md:flex-row items-center text-center md:text-left gap-8 shadow-2xl">
-                  <ThermometerSun size={56} className="text-[#ce9a8f]" />
-                  <div>
-                    <h3 className="text-4xl font-playfair mb-2">{analysisData.weather.temp}°C</h3>
-                    <p className="text-sm font-light tracking-widest text-white/80">"{analysisData.weather.tip}"</p>
-                  </div>
-                </div>
+                <WeatherCard weather={analysisData.weather} />
               )}
 
               <h2 className="text-5xl md:text-7xl font-playfair text-white text-center mb-16 drop-shadow-lg leading-snug tracking-wide">The Collection</h2>
@@ -522,8 +466,32 @@ const StepperAnalysis = () => {
                       <p className="text-sm font-light tracking-wider leading-relaxed line-clamp-4">{val}</p>
 
                       <div className="mt-6 flex flex-col gap-2 mt-auto">
-                        <a href={`https://www.amazon.in/s?k=${encodeURIComponent('best premium ' + (analysisData.skin_tone || '') + ' ' + key + ' makeup')}&s=review-rank`} target="_blank" rel="noreferrer" className="w-full py-3 bg-white/5 hover:bg-[#ff9900]/80 hover:text-white border border-white/10 hover:border-[#ff9900] text-center rounded-xl text-[10px] tracking-widest uppercase transition-all duration-300 font-bold block">Top Rated Amazon</a>
-                        <a href={`https://www.flipkart.com/search?q=${encodeURIComponent('best premium ' + (analysisData.skin_tone || '') + ' ' + key + ' makeup')}&sort=popularity`} target="_blank" rel="noreferrer" className="w-full py-3 bg-white/5 hover:bg-[#2874f0]/80 hover:text-white border border-white/10 hover:border-[#2874f0] text-center rounded-xl text-[10px] tracking-widest uppercase transition-all duration-300 font-bold block">Top Rated Flipkart</a>
+                        {(() => {
+                          const exactName = analysisData?.makeup_product_names?.[key] || val;
+                          return (
+                            <>
+                              <a
+                                href={`https://www.amazon.in/s?k=${encodeURIComponent(exactName)}&s=price-asc-rank`}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={exactName}
+                                className="w-full py-3 bg-white/5 hover:bg-[#ff9900]/80 hover:text-white border border-white/10 hover:border-[#ff9900] text-center rounded-xl text-[10px] tracking-widest uppercase transition-all duration-300 font-bold block"
+                              >
+                                🛒 Buy on Amazon
+                              </a>
+                              <a
+                                href={`https://www.flipkart.com/search?q=${encodeURIComponent(exactName)}&sort=price_asc`}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={exactName}
+                                className="w-full py-3 bg-white/5 hover:bg-[#2874f0]/80 hover:text-white border border-white/10 hover:border-[#2874f0] text-center rounded-xl text-[10px] tracking-widest uppercase transition-all duration-300 font-bold block"
+                              >
+                                🛍️ Buy on Flipkart
+                              </a>
+                              <p className="text-[9px] text-white/30 text-center mt-1 leading-tight">{exactName}</p>
+                            </>
+                          );
+                        })()}
                       </div>
                     </div>
                   </div>
@@ -598,22 +566,38 @@ const StepperAnalysis = () => {
 
               {/* Metrics shown at bottom full width if completed */}
               {analysisData?.transformation && (
-                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-16 grid grid-cols-2 lg:grid-cols-3 gap-6 max-w-4xl mx-auto">
-                  <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-3xl flex flex-col items-center justify-center text-center">
-                    <Clock className="text-white/40 mb-3" size={24} />
-                    <span className="text-2xl font-light mb-1">{analysisData.transformation.longevity}</span>
-                    <span className="text-xs tracking-widest text-white/50 uppercase">Longevity</span>
+                <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="mt-16 grid grid-cols-1 md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+
+                  {/* Longevity card — factual wear time from dataset */}
+                  <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-8 rounded-3xl flex flex-col items-center justify-center text-center">
+                    <Clock className="text-[#ce9a8f] mb-3" size={28} />
+                    <span className="text-3xl font-playfair mb-1">{analysisData.transformation.longevity}</span>
+                    <span className="text-xs tracking-widest text-white/50 uppercase mb-2">Makeup Longevity</span>
+                    <p className="text-[11px] text-white/40 leading-relaxed">
+                      Expected wear time for the recommended product combination under normal conditions.
+                    </p>
                   </div>
-                  <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-3xl flex flex-col items-center justify-center text-center">
-                    <ShieldCheck className="text-white/40 mb-3" size={24} />
-                    <span className="text-2xl font-light mb-1">{analysisData.transformation.risk}</span>
-                    <span className="text-xs tracking-widest text-white/50 uppercase">Risk Profile</span>
+
+                  {/* Risk card — derived from actual recommended makeup products */}
+                  <div className={`backdrop-blur-xl border p-8 rounded-3xl flex flex-col items-center justify-center text-center ${
+                    analysisData.transformation.risk_label === 'Low'
+                      ? 'bg-emerald-500/10 border-emerald-500/20'
+                      : analysisData.transformation.risk_label === 'Moderate'
+                      ? 'bg-amber-500/10 border-amber-500/20'
+                      : 'bg-rose-500/10 border-rose-500/20'
+                  }`}>
+                    <ShieldCheck className={`mb-3 ${
+                      analysisData.transformation.risk_label === 'Low' ? 'text-emerald-400'
+                      : analysisData.transformation.risk_label === 'Moderate' ? 'text-amber-400'
+                      : 'text-rose-400'
+                    }`} size={28} />
+                    <span className="text-3xl font-playfair mb-1">{analysisData.transformation.risk_label}</span>
+                    <span className="text-xs tracking-widest text-white/50 uppercase mb-2">Skin Risk</span>
+                    <p className="text-[11px] text-white/40 leading-relaxed">
+                      {analysisData.transformation.risk_note}
+                    </p>
                   </div>
-                  <div className="bg-white/5 backdrop-blur-xl border border-white/10 p-6 rounded-3xl flex flex-col items-center justify-center text-center">
-                    <DollarSign className="text-white/40 mb-3" size={24} />
-                    <span className="text-2xl font-light mb-1">₹{analysisData.transformation.cost}</span>
-                    <span className="text-xs tracking-widest text-white/50 uppercase">Est Cost</span>
-                  </div>
+
                 </motion.div>
               )}
 

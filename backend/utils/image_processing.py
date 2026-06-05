@@ -85,38 +85,75 @@ def _try_detect_faces(gray_variants: list) -> list:
 
 def _is_human_by_geometry(np_image: np.ndarray, faces: list) -> bool:
     """
-    Sanity-check: verify the detected region actually looks like skin.
-    This prevents false positives (eyes on cats, geometric patterns, etc.)
+    STRICT sanity-check: verify the detected region actually is a HUMAN FACE.
+    diagrams, torsos, and objects with flesh-colors will be rejected.
     """
     if not faces:
         return False
+    
     h, w = np_image.shape[:2]
+    # Take the largest detected face
     x, y, fw, fh = max(faces, key=lambda r: r[2] * r[3])
-    # Expand slightly
-    px, py = int(fw * 0.15), int(fh * 0.15)
-    x1, y1 = max(0, x - px), max(0, y - py)
-    x2, y2 = min(w, x + fw + px), min(h, y + fh + py)
-    region = np_image[y1:y2, x1:x2]
+    
+    # REJECTION 1: Size check. If face is too tiny relative to image, likely a false positive.
+    if fw < w * 0.1 or fh < h * 0.1:
+        return False
+
+    # REJECTION 2: Aspect ratio. Human faces are roughly 1:1.2 to 1:1.5
+    aspect = fh / fw
+    if aspect < 0.8 or aspect > 2.0:
+        return False
+
+    region = np_image[y:y+fh, x:x+fw]
     if region.size == 0:
         return False
 
-    # Check skin pixel ratio within the face box
+    # REJECTION 3: Skin Color Validation (HSV + YCrCb)
+    # Human skin has very specific Hue (0-25) and Saturation (20-150)
+    hsv = cv2.cvtColor(region, cv2.COLOR_RGB2HSV)
     ycrcb = cv2.cvtColor(region, cv2.COLOR_RGB2YCrCb)
-    mask = cv2.inRange(ycrcb, np.array([0, 133, 77]), np.array([255, 174, 127]))
-    skin_ratio = np.count_nonzero(mask) / mask.size
-    # A real face crop should have at least 15% skin-colored pixels
-    return skin_ratio >= 0.10
+    
+    # Mask skin pixels
+    mask_hsv = cv2.inRange(hsv, np.array([0, 30, 60]), np.array([25, 180, 255]))
+    mask_ycrcb = cv2.inRange(ycrcb, np.array([0, 133, 77]), np.array([255, 173, 127]))
+    
+    skin_mask = cv2.bitwise_and(mask_hsv, mask_ycrcb)
+    skin_ratio = np.count_nonzero(skin_mask) / skin_mask.size
+    
+    # A real face crop (zoomed in) should be at least 45% skin pixels.
+    # Diagrams of organs/torsos usually have too much background or high-contrast labels.
+    return skin_ratio >= 0.45
 
+
+def apply_white_balance(img: np.ndarray) -> np.ndarray:
+    """Auto white-balance using Gray World Assumption to fix lighting."""
+    b, g, r = cv2.split(img.astype(np.float32))
+    b_avg, g_avg, r_avg = np.mean(b), np.mean(g), np.mean(r)
+    
+    # Safe division to prevent NaNs
+    b_avg = max(b_avg, 1)
+    g_avg = max(g_avg, 1)
+    r_avg = max(r_avg, 1)
+    
+    k = (b_avg + g_avg + r_avg) / 3
+    b = np.clip(b * (k / b_avg), 0, 255)
+    g = np.clip(g * (k / g_avg), 0, 255)
+    r = np.clip(r * (k / r_avg), 0, 255)
+    return cv2.merge([b, g, r]).astype(np.uint8)
 
 def _crop_face(np_image: np.ndarray, faces: list) -> np.ndarray:
     h, w = np_image.shape[:2]
     x, y, fw, fh = max(faces, key=lambda r: r[2] * r[3])
-    px = int(fw * 0.30)
-    py = int(fh * 0.30)
+    # Pad for a nice portrait crop
+    px = int(fw * 0.25)
+    py = int(fh * 0.35)
     x1, y1 = max(0, x - px), max(0, y - py)
     x2, y2 = min(w, x + fw + px), min(h, y + fh + py)
     cropped = np_image[y1:y2, x1:x2]
-    return cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR)
+    
+    bgr_cropped = cv2.cvtColor(cropped, cv2.COLOR_RGB2BGR)
+    # The aggressive gray-world white balance algorithm over-corrected warm skin tones into dark/gray. Removed.
+    return bgr_cropped
 
 
 # ---------------------------------------------------------------------------
@@ -127,20 +164,22 @@ def detect_and_crop_face(image_bytes: bytes) -> np.ndarray:
     """
     Strictly detect a human face and return the cropped BGR region.
     Raises ValueError if no valid human face is found.
-    Non-face images (flowers, objects, landscapes) will always be rejected.
     """
     np_image = _load_rgb(image_bytes)
     gray_variants = _preprocess_gray(np_image)
 
     faces = _try_detect_faces(gray_variants)
 
-    # Additional geometry check to filter false positives
-    if faces and _is_human_by_geometry(np_image, faces):
-        return _crop_face(np_image, faces)
+    if faces:
+        # Sort and try to find at least one that passes the strict geometry check
+        sorted_faces = sorted(faces, key=lambda r: r[2] * r[3], reverse=True)
+        for f in sorted_faces:
+            if _is_human_by_geometry(np_image, [f]):
+                return _crop_face(np_image, [f])
 
     raise ValueError(
-        "No human face detected. Please upload a clear, front-facing photo "
-        "of a person with good lighting."
+        "Invalid image. Please upload a clear face photo. "
+        "Medical diagrams or non-face images are not accepted."
     )
 
 
@@ -213,12 +252,12 @@ def classify_skin_tone(bgr_face: np.ndarray) -> dict:
     med_lum = float(np.median(skin_pixels)) if len(skin_pixels) > 0 else 128.0
 
     # --- Thresholds calibrated from real measurements ---
-    # Fair≈193, Medium≈140, Dusky≈112, Dark≈64, VDark≈40
-    if med_lum > 165:
+    # Adjusted to be more forgiving for indoor lighting
+    if med_lum > 155:
         tone, fp, mp, dp = "Fair",   0.87, 0.10, 0.03
-    elif med_lum > 125:
+    elif med_lum > 110:
         tone, fp, mp, dp = "Medium", 0.08, 0.85, 0.07
-    elif med_lum > 85:
+    elif med_lum > 70:
         tone, fp, mp, dp = "Dusky",  0.03, 0.12, 0.85
     else:
         tone, fp, mp, dp = "Dark",   0.02, 0.05, 0.93

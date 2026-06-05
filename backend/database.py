@@ -1,22 +1,21 @@
-from sqlalchemy import create_engine
+"""
+database.py — NO-DATABASE MODE
+Uses real SQLAlchemy Base so model class definitions work,
+but NO engine or session is created. Everything runs in-memory/mock.
+"""
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-import os
-from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+from typing import Optional
 
-load_dotenv()
-
-# Use your postgres connection string here (default is a local postgres setup)
-SQLALCHEMY_DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/glowmatchai")
-
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
+# Real Base so model classes (User, Image, etc.) can be defined normally
 Base = declarative_base()
 
+# No engine, no session — all None
+engine = None
+SessionLocal = None
+DB_AVAILABLE = False
+
+
 def get_db():
-    db = SessionLocal()
-    try:
-        yield db
-    finally:
-        db.close()
+    """Dependency — always yields None (no DB mode)."""
+    yield None

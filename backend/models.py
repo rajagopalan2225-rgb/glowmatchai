@@ -24,3 +24,29 @@ class Image(Base):
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
 
     owner = relationship("User", back_populates="images")
+
+class MakeupProduct(Base):
+    __tablename__ = "makeup_products"
+
+    id = Column(Integer, primary_key=True, index=True)
+    skin_tone = Column(String(50), index=True)
+    mode = Column(String(50), index=True)
+    foundation = Column(String(255))
+    lipstick = Column(String(255))
+    blush = Column(String(255))
+    eyeshadow = Column(String(255))
+    eyeliner = Column(String(255))
+    mascara_shade = Column(String(255))
+    concealer = Column(String(255))
+    highlighter = Column(String(255))
+    foundation_layer = Column(Integer)
+    lipstick_layer = Column(Integer)
+    blush_layers = Column(Integer)
+    mascara_layer = Column(Integer)
+    concealer_layer = Column(Integer)
+    foundation_ml = Column(String(20))
+    lipstick_ml = Column(String(20))
+    cost_of_makeup = Column(Integer)
+    risk_level = Column(String(50))
+    longevity = Column(String(50))
+    luminance_bucket = Column(String(50))

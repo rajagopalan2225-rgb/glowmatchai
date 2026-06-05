@@ -3,6 +3,9 @@ import axios from 'axios';
 
 const AuthContext = createContext(null);
 
+// Use VITE_API_URL in production (Render), fall back to '' for local dev (Vite proxy handles /api)
+const API_BASE = import.meta.env.VITE_API_URL || '';
+
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -10,7 +13,7 @@ export const AuthProvider = ({ children }) => {
 
   const fetchUser = async (token) => {
     try {
-      const response = await axios.get('/api/auth/me', {
+      const response = await axios.get(`${API_BASE}/api/auth/me`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUser(response.data);
@@ -35,7 +38,7 @@ export const AuthProvider = ({ children }) => {
   const signup = async ({ email, password, fullName }) => {
     setError(null);
     try {
-      await axios.post('/api/auth/register', {
+      await axios.post(`${API_BASE}/api/auth/register`, {
         email,
         password,
         full_name: fullName
@@ -53,7 +56,7 @@ export const AuthProvider = ({ children }) => {
   const login = async ({ email, password }) => {
     setError(null);
     try {
-      const response = await axios.post('/api/auth/login', {
+      const response = await axios.post(`${API_BASE}/api/auth/login`, {
         email,
         password
       });
@@ -73,7 +76,7 @@ export const AuthProvider = ({ children }) => {
     const token = localStorage.getItem('access_token');
     if (token) {
       try {
-        await axios.post('/api/auth/logout', {}, {
+        await axios.post(`${API_BASE}/api/auth/logout`, {}, {
           headers: { Authorization: `Bearer ${token}` }
         });
       } catch (e) {
