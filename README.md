@@ -1,70 +1,167 @@
-# ✨ AI Beauty Studio — Makeup Analysis & Recommendation System
+✨ GlowMatch AI
 
-A premium, full-stack AI platform designed to provide personalized beauty insights. This application uses Computer Vision and Machine Learning to analyze skin tones, provide dataset-aware recommendations, fetch live weather-based tips, and quantify make-up transformations.
+AI-Powered Makeup Analysis & Recommendation System
 
-## 🚀 Quick Start (No Docker)
+GlowMatch AI is a full-stack AI application that analyzes a user’s skin tone and provides personalized makeup recommendations based on skin tone, makeup preferences, and weather conditions.
 
-### 1. Clone and Set Up Backend
-```bash
+⸻
+
+🚀 Features
+
+* 🧠 Skin Tone Analysis using a CNN model
+* 💄 Makeup Recommendations based on skin tone and makeup mode
+* 🌦️ Weather-Based Beauty Tips using OpenWeather API
+* ✨ Before & After Transformation Analysis
+* 📊 Dataset-Based Recommendations
+* 📱 Simple and responsive user interface
+
+⸻
+
+🛠️ Technology Stack
+
+Frontend
+
+* React.js
+* JavaScript
+* CSS
+* Vite
+
+Backend
+
+* Python
+* FastAPI
+
+AI / ML
+
+* TensorFlow
+* CNN
+* Machine Learning
+
+API
+
+* OpenWeather API
+
+⸻
+
+📂 Project Structure
+
+GlowMatchAI/
+│
+├── backend/
+│   ├── model/
+│   ├── training_data/
+│   ├── data.csv
+│   ├── main.py
+│   └── requirements.txt
+│
+├── frontend/
+│   ├── src/
+│   ├── public/
+│   └── package.json
+│
+└── README.md
+
+⸻
+
+▶️ How to Run
+
+1. Clone the Repository
+
+git clone https://github.com/rajagopalan2225-rgb/glowmatchai.git
+cd glowmatchai
+
+2. Backend Setup
+
 cd backend
 pip install -r requirements.txt
-# add your OpenWeather API key to .env
-cp .env.example .env
-```
 
-### 2. (Optional) Train the Model
-If you have a `training_data/` folder with subfolders `Fair`, `Medium`, and `Dark`, you can retrain the CNN:
-```bash
-python model/train_model.py
-```
+Create a .env file and add your OpenWeather API key:
 
-### 3. Start Backend
-```bash
+OPENWEATHER_API_KEY=your_api_key
+
+Start the backend:
+
 uvicorn main:app --reload --port 8000
-```
 
-### 4. Set Up Frontend
-In a new terminal:
-```bash
+Backend:
+
+http://localhost:8000
+
+3. Frontend Setup
+
+Open another terminal:
+
 cd frontend
 npm install
 npm run dev
-```
 
-### 5. Open the App
-Navigate to `http://localhost:5173`.
+Frontend:
 
----
+http://localhost:5173
 
-## 🛠️ Features
+⸻
 
-- **Skin Analysis**: Upload a selfie to detect your skin tone using a TensorFlow CNN model.
-- **Smart Recommendations**: Get tailored product suggestions from our dataset based on your skin tone and desired "look" (Daily, Party, Office, etc.).
-- **Weather Widget**: Real-time beauty tips based on your local weather conditions (Heat, Humidity, Rain).
-- **Transformation Tool**: Compare "Before" and "After" photos to see your transformation percentage with AI feedback.
+🧠 Model Training
 
----
+If you have the training dataset, you can train the CNN model using:
 
-## 📊 Dataset Reference (`data.csv`)
+python model/train_model.py
 
-The application expects a `data.csv` in the `backend/` directory with the following columns:
-- `skin_tone`: Fair, Medium, or Dark
-- `mode`: Daily, Party, Office, Bridal, etc.
-- `product_name`: Name of the makeup product
-- *(Optional columns for foundation shade, lipstick, etc. will be displayed in the UI)*
+Dataset structure:
 
-## 🔑 API Keys
-Get a free OpenWeather API key at [openweathermap.org](https://openweathermap.org/) and place it in `backend/.env`.
+training_data/
+├── Fair/
+├── Medium/
+└── Dark/
 
----
+⸻
 
-## 📈 API Reference
+📊 Dataset
 
-| Endpoint | Method | Description |
-|---|---|---|
-| `/api/predict` | POST | Analyzes skin tone from a multipart image file. |
-| `/api/recommend` | GET | Returns product recommendations for `skin_tone` and `mode`. |
-| `/api/recommend/modes` | GET | Returns all unique application modes from the dataset. |
-| `/api/weather` | GET | Fetches live weather and beauty tips for a given `city`. |
-| `/api/transform` | POST | Calculates transformation score between two images. |
-# glowmatchai
+The data.csv file contains makeup recommendation information such as:
+
+* Skin tone
+* Makeup mode
+* Product name
+* Foundation shade
+* Lipstick
+* Blush
+* Other makeup details
+
+⸻
+
+📈 API Endpoints
+
+Endpoint	Method	Purpose
+/api/predict	POST	Predict skin tone
+/api/recommend	GET	Get makeup recommendations
+/api/recommend/modes	GET	Get available makeup modes
+/api/weather	GET	Get weather-based tips
+/api/transform	POST	Analyze before/after transformation
+
+⸻
+
+🚀 Future Enhancements
+
+* Foundation shade matching
+* Advanced AI beauty assistant
+* Personalized beauty profiles
+* Mobile application
+* E-commerce integration
+* Improved AI model accuracy
+
+⸻
+
+📄 License
+
+This project is developed for academic and educational purposes.
+
+⸻
+
+👨‍💻 Developed By
+
+Rajagopalan
+
+B.Tech Information Technology
+
+GlowMatch AI — Makeup Analysis & Recommendation System
